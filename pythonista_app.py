@@ -402,13 +402,25 @@ class Repo2TxtApp(ui.View):  # type: ignore[misc]
                     continue
                 rel_path = info.filename
                 if rel_path.endswith(".gitignore"):
-                    gitignore_rules.extend(self._read_gitignore(zf.read(info.filename).decode("utf-8"), rel_path))
+                    gitignore_rules.extend(
+                        self._read_gitignore(
+                            zf.read(info.filename).decode("utf-8", errors="ignore"), rel_path
+                        )
+                    )
                 entries.append(FileEntry(path=f"/{rel_path}", url=rel_path, url_type="zip"))
             filtered = [e for e in entries if not is_ignored(e.path, gitignore_rules)]
             if not filtered:
                 raise RuntimeError("No files found after applying .gitignore rules.")
             self.set_files(filtered)
             self.set_status(f"Loaded {len(filtered)} files from zip.")
+        except zipfile.BadZipFile as exc:
+            if dialogs:
+                dialogs.hud_alert(f"Zip error: {exc}", "error", 2.5)
+            self.set_status("Zip error: Invalid or corrupted archive.")
+        except UnicodeDecodeError as exc:
+            if dialogs:
+                dialogs.hud_alert(f"Encoding error: {exc}", "error", 2.5)
+            self.set_status("Encoding error while reading archive contents.")
         except Exception as exc:  # noqa: BLE001
             if dialogs:
                 dialogs.hud_alert(f"Zip error: {exc}", "error", 2.5)
@@ -476,6 +488,7 @@ class Repo2TxtApp(ui.View):  # type: ignore[misc]
             temp.close()
             if dialogs:
                 dialogs.share_file(temp.name)
+                ui.delay(lambda: self._safe_unlink(temp.name), 3.0)
             self.set_status("Zip ready to share.")
         except Exception as exc:  # noqa: BLE001
             if dialogs:
@@ -503,7 +516,15 @@ class Repo2TxtApp(ui.View):  # type: ignore[misc]
             fh.write(self.output.text)
         if dialogs:
             dialogs.share_file(temp.name)
+            ui.delay(lambda: self._safe_unlink(temp.name), 3.0)
         self.set_status("Text file ready to share.")
+
+    @staticmethod
+    def _safe_unlink(path: str) -> None:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
 
 def main() -> None:
