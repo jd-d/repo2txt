@@ -14,7 +14,7 @@ import re
 import tempfile
 import zipfile
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import requests
 
@@ -27,8 +27,15 @@ except ImportError:  # pragma: no cover - only available in Pythonista
     dialogs = None
     clipboard = None
 
+if TYPE_CHECKING:  # pragma: no cover - typing helpers only
+    import ui as _ui
+    UIBaseView = _ui.View
+else:
+    UIBaseView = object if ui is None else ui.View
+
 
 COMMON_EXTENSIONS = {".js", ".py", ".java", ".cpp", ".html", ".css", ".ts", ".jsx", ".tsx"}
+TEMP_FILE_CLEANUP_DELAY = 10.0
 
 
 @dataclass
@@ -201,7 +208,7 @@ class FilesDataSource(object):
         tv.reload_data()
 
 
-class Repo2TxtApp(ui.View):  # type: ignore[misc]
+class Repo2TxtApp(UIBaseView):
     def __init__(self) -> None:
         if ui is None:
             raise RuntimeError("This script must be run inside Pythonista.")
@@ -356,7 +363,7 @@ class Repo2TxtApp(ui.View):  # type: ignore[misc]
                 match = next((r for r in all_refs if last.startswith(r)), None)
                 if match:
                     ref_from_url = match
-                    path_from_url = last[len(match) + 1 :]
+                    path_from_url = last[len(match) + 1 :] if len(last) > len(match) else ""
                 else:
                     ref_from_url = last
             sha = fetch_repo_sha(owner, repo, ref_from_url, path_from_url, token)
@@ -373,7 +380,7 @@ class Repo2TxtApp(ui.View):  # type: ignore[misc]
                 raise RuntimeError("Repository has no files to display.")
             self.set_files(entries)
             self.set_status(f"Loaded {len(entries)} files from GitHub.")
-        except Exception as exc:  # noqa: BLE001 - surfacing to user
+        except (ValueError, RuntimeError, requests.RequestException, OSError) as exc:
             if dialogs:
                 dialogs.hud_alert(str(exc), "error", 2.5)
             self.set_status(f"Error: {exc}")
@@ -479,7 +486,7 @@ class Repo2TxtApp(ui.View):  # type: ignore[misc]
             self.output.text = formatted
             approx_tokens = len(formatted.split())
             self.set_status(f"Generated text (~{approx_tokens} tokens).")
-        except Exception as exc:  # noqa: BLE001
+        except (RuntimeError, requests.RequestException, OSError, zipfile.BadZipFile) as exc:
             if dialogs:
                 dialogs.hud_alert(str(exc), "error", 2.5)
             self.set_status(f"Error: {exc}")
@@ -500,12 +507,12 @@ class Repo2TxtApp(ui.View):  # type: ignore[misc]
                             zf.writestr(path.lstrip("/"), text)
                 if dialogs:
                     dialogs.share_file(temp_path)
-                    ui.delay(lambda: self._safe_unlink(temp_path), 10.0)
+                    ui.delay(lambda: self._safe_unlink(temp_path), TEMP_FILE_CLEANUP_DELAY)
             finally:
                 if temp_path and not dialogs:
                     self._safe_unlink(temp_path)
             self.set_status("Zip ready to share.")
-        except Exception as exc:  # noqa: BLE001
+        except (RuntimeError, requests.RequestException, OSError, zipfile.BadZipFile) as exc:
             if dialogs:
                 dialogs.hud_alert(str(exc), "error", 2.5)
             self.set_status(f"Error: {exc}")
@@ -533,7 +540,7 @@ class Repo2TxtApp(ui.View):  # type: ignore[misc]
                 temp.write(self.output.text.encode("utf-8"))
             if dialogs:
                 dialogs.share_file(temp_path)
-                ui.delay(lambda: self._safe_unlink(temp_path), 10.0)
+                ui.delay(lambda: self._safe_unlink(temp_path), TEMP_FILE_CLEANUP_DELAY)
         finally:
             if temp_path and not dialogs:
                 self._safe_unlink(temp_path)
