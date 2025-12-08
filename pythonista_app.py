@@ -78,8 +78,10 @@ def get_references(owner: str, repo: str, token: str) -> Dict[str, List[str]]:
     tags_resp = requests.get(
         f"https://api.github.com/repos/{owner}/{repo}/git/refs/tags", headers=headers
     )
-    if not branches_resp.ok or not tags_resp.ok:
-        raise RuntimeError("Failed to fetch references")
+    if not branches_resp.ok:
+        handle_fetch_error(branches_resp)
+    if not tags_resp.ok:
+        handle_fetch_error(tags_resp)
     branches = [ref["ref"].split("/", 2)[-1] for ref in branches_resp.json()]
     tags = [ref["ref"].split("/", 2)[-1] for ref in tags_resp.json()]
     return {"branches": branches, "tags": tags}
@@ -141,7 +143,15 @@ def build_index(paths: List[str]) -> str:
         parts = [p for p in path.strip("/").split("/") if p]
         current = tree
         for idx, part in enumerate(parts):
-            current = current.setdefault(part, {} if idx < len(parts) - 1 else None)
+            is_last = idx == len(parts) - 1
+            if part not in current:
+                current[part] = None if is_last else {}
+            if not is_last:
+                child = current.get(part)
+                if not isinstance(child, dict):
+                    child = {}
+                    current[part] = child
+                current = child
 
     def walk(node: Dict[str, dict], prefix: str = "") -> str:
         lines = []
