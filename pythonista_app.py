@@ -13,7 +13,7 @@ import os
 import re
 import tempfile
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import requests
@@ -204,7 +204,6 @@ class FilesDataSource(object):
 
     def tableview_did_select(self, tv, _section, row: int) -> None:
         self.app.toggle_selection(row)
-        tv.reload_rows([row])
         tv.reload_data()
 
 
@@ -363,7 +362,7 @@ class Repo2TxtApp(UIBaseView):
                 match = next((r for r in all_refs if last.startswith(r)), None)
                 if match:
                     ref_from_url = match
-                    path_from_url = last[len(match) + 1 :] if len(last) > len(match) else ""
+                    path_from_url = last[len(match) + 1 :] if last.startswith(f"{match}/") else ""
                 else:
                     ref_from_url = last
             sha = fetch_repo_sha(owner, repo, ref_from_url, path_from_url, token)
@@ -438,7 +437,7 @@ class Repo2TxtApp(UIBaseView):
             if dialogs:
                 dialogs.hud_alert(f"Encoding error: {exc}", "error", 2.5)
             self.set_status("Encoding error while reading archive contents.")
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, zipfile.LargeZipFile, RuntimeError) as exc:
             if dialogs:
                 dialogs.hud_alert(f"Zip error: {exc}", "error", 2.5)
             self.set_status(f"Zip error: {exc}")
