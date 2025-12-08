@@ -73,10 +73,10 @@ def handle_fetch_error(response: requests.Response) -> None:
 def get_references(owner: str, repo: str, token: str) -> Dict[str, List[str]]:
     headers = auth_headers(token, "application/vnd.github+json")
     branches_resp = requests.get(
-        f"https://api.github.com/repos/{owner}/{repo}/git/matching-refs/heads/", headers=headers
+        f"https://api.github.com/repos/{owner}/{repo}/git/refs/heads", headers=headers
     )
     tags_resp = requests.get(
-        f"https://api.github.com/repos/{owner}/{repo}/git/matching-refs/tags/", headers=headers
+        f"https://api.github.com/repos/{owner}/{repo}/git/refs/tags", headers=headers
     )
     if not branches_resp.ok or not tags_resp.ok:
         raise RuntimeError("Failed to fetch references")
@@ -481,14 +481,19 @@ class Repo2TxtApp(ui.View):  # type: ignore[misc]
             if not selected:
                 raise RuntimeError("No files selected.")
             contents = self._fetch_file_contents(selected)
-            temp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-            with zipfile.ZipFile(temp, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-                for path, text in contents:
-                    zf.writestr(path.lstrip("/"), text)
-            temp.close()
-            if dialogs:
-                dialogs.share_file(temp.name)
-                ui.delay(lambda: self._safe_unlink(temp.name), 3.0)
+            temp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp:
+                    temp_path = temp.name
+                    with zipfile.ZipFile(temp, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                        for path, text in contents:
+                            zf.writestr(path.lstrip("/"), text)
+                if dialogs:
+                    dialogs.share_file(temp_path)
+                    ui.delay(lambda: self._safe_unlink(temp_path), 10.0)
+            finally:
+                if temp_path and not dialogs:
+                    self._safe_unlink(temp_path)
             self.set_status("Zip ready to share.")
         except Exception as exc:  # noqa: BLE001
             if dialogs:
@@ -511,12 +516,17 @@ class Repo2TxtApp(ui.View):  # type: ignore[misc]
         if not self.output.text.strip():
             self.set_status("Nothing to save.")
             return
-        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
-        with open(temp.name, "w", encoding="utf-8") as fh:
-            fh.write(self.output.text)
-        if dialogs:
-            dialogs.share_file(temp.name)
-            ui.delay(lambda: self._safe_unlink(temp.name), 3.0)
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as temp:
+                temp_path = temp.name
+                temp.write(self.output.text.encode("utf-8"))
+            if dialogs:
+                dialogs.share_file(temp_path)
+                ui.delay(lambda: self._safe_unlink(temp_path), 10.0)
+        finally:
+            if temp_path and not dialogs:
+                self._safe_unlink(temp_path)
         self.set_status("Text file ready to share.")
 
     @staticmethod
