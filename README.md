@@ -34,7 +34,7 @@ A native Pythonista script is available at [`repo2txt_pythonista_ios.py`](repo2t
 5. Use **Download Zip** to export selected files or **Copy/Save** to move the generated text into other apps.
 
 Notes:
-- For local content on iOS, use **Import Local (zip/file)** to load a zipped project or an individual file from the Files app.
+- For local content on iOS, use **Import Local (zip/file/folder)** to load a zipped project, an individual file, or an entire folder from the Files app.
 - The script relies only on Pythonista-bundled modules plus `requests` (included with Pythonista).
 
 
