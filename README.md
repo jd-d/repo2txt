@@ -23,6 +23,20 @@ This web-based tool converts GitHub repository (or local directory) contents  in
 
 This tool runs entirely in the browser, ensuring data security without server-side processing.
 
+## Pythonista (iOS) version
+
+A native Pythonista script is available at [`repo2txt_pythonista_ios.py`](repo2txt_pythonista_ios.py) with nearly the same UI and workflow as the web app:
+
+1. Copy this repository into Pythonista on your iOS device.
+2. Open `repo2txt_pythonista_ios.py` and run it.
+3. Enter a GitHub URL (and optional token) and tap **Fetch Directory** to load the repo tree.
+4. Toggle files or extensions, then tap **Generate Text** to build the combined prompt.
+5. Use **Download Zip** to export selected files or **Copy/Save** to move the generated text into other apps.
+
+Notes:
+- For local content on iOS, use **Import Local (zip/file/folder)** to load a zipped project, an individual file, or an entire folder from the Files app.
+- The script relies only on Pythonista-bundled modules plus `requests` (included with Pythonista).
+
 
 ## To do
 
