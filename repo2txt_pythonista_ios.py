@@ -304,7 +304,8 @@ class Repo2TxtApp(UIBaseView):
         self.status_label.text = message
 
     def refresh_extensions(self) -> None:
-        self.ext_scroll.subviews = []
+        for subview in list(self.ext_scroll.subviews):
+            self.ext_scroll.remove_subview(subview)
         x = 0
         sorted_exts = sorted(self.extension_map.items(), key=lambda item: len(item[1]), reverse=True)
         for ext, indexes in sorted_exts:
