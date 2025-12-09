@@ -226,7 +226,7 @@ class Repo2TxtApp(UIBaseView):
         self.fetch_button = ui.Button(title="Fetch Directory", bg_color="#3b82f6", tint_color="white")
         self.generate_button = ui.Button(title="Generate Text", bg_color="#10b981", tint_color="white")
         self.zip_button = ui.Button(title="Download Zip", bg_color="#8b5cf6", tint_color="white")
-        self.local_button = ui.Button(title="Import Local (zip/file)", bg_color="#6366f1", tint_color="white")
+        self.local_button = ui.Button(title="Import Local (zip/file/folder)", bg_color="#6366f1", tint_color="white")
         self.copy_button = ui.Button(title="Copy", bg_color="#6366f1", tint_color="white")
         self.save_button = ui.Button(title="Save Text", bg_color="#ec4899", tint_color="white")
 
@@ -304,7 +304,8 @@ class Repo2TxtApp(UIBaseView):
         self.status_label.text = message
 
     def refresh_extensions(self) -> None:
-        self.ext_scroll.subviews = []
+        for subview in list(self.ext_scroll.subviews):
+            self.ext_scroll.remove_subview(subview)
         x = 0
         sorted_exts = sorted(self.extension_map.items(), key=lambda item: len(item[1]), reverse=True)
         for ext, indexes in sorted_exts:
@@ -392,6 +393,9 @@ class Repo2TxtApp(UIBaseView):
         path = dialogs.pick_document()
         if not path:
             return
+        if os.path.isdir(path):
+            self._load_directory(path)
+            return
         if path.lower().endswith(".zip"):
             self._load_zip(path)
             return
@@ -441,6 +445,57 @@ class Repo2TxtApp(UIBaseView):
             if dialogs:
                 dialogs.hud_alert(f"Zip error: {exc}", "error", 2.5)
             self.set_status(f"Zip error: {exc}")
+
+    def _load_directory(self, path: str) -> None:
+        try:
+            entries: List[FileEntry] = []
+            gitignore_rules = [".git/**"]
+            base_path = path.rstrip("/")
+            
+            # First pass: collect all files and read .gitignore files
+            for root, dirs, files in os.walk(base_path):
+                # Skip .git directory
+                if ".git" in dirs:
+                    dirs.remove(".git")
+                
+                for filename in files:
+                    file_path = os.path.join(root, filename)
+                    rel_path = os.path.relpath(file_path, base_path)
+                    
+                    # Read .gitignore files to collect rules
+                    if filename == ".gitignore":
+                        try:
+                            with open(file_path, "r", encoding="utf-8", errors="ignore") as fh:
+                                gitignore_rules.extend(
+                                    self._read_gitignore(fh.read(), rel_path)
+                                )
+                        except OSError:
+                            pass  # Skip if we can't read the .gitignore file
+                    
+                    entries.append(
+                        FileEntry(
+                            path=f"/{rel_path}",
+                            url=file_path,
+                            url_type="local",
+                        )
+                    )
+            
+            # Filter out ignored files
+            filtered = [e for e in entries if not is_ignored(e.path, gitignore_rules)]
+            if not filtered:
+                raise RuntimeError("No files found after applying .gitignore rules.")
+            
+            self.zip_bytes = None
+            self.set_files(filtered)
+            self.set_status(f"Loaded {len(filtered)} files from directory.")
+        except OSError as exc:
+            if dialogs:
+                dialogs.hud_alert(f"Directory error: {exc}", "error", 2.5)
+            self.set_status(f"Directory error: {exc}")
+        except RuntimeError as exc:
+            if dialogs:
+                dialogs.hud_alert(str(exc), "error", 2.5)
+            self.set_status(f"Error: {exc}")
 
     def _read_gitignore(self, content: str, rel_path: str) -> List[str]:
         rules: List[str] = []
