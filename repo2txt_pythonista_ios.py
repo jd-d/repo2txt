@@ -450,7 +450,6 @@ class Repo2TxtApp(UIBaseView):
             entries: List[FileEntry] = []
             gitignore_rules = [".git/**"]
             base_path = path.rstrip("/")
-            base_name = os.path.basename(base_path)
             
             # First pass: collect all files and read .gitignore files
             for root, dirs, files in os.walk(base_path):
