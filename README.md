@@ -25,10 +25,10 @@ This tool runs entirely in the browser, ensuring data security without server-si
 
 ## Pythonista (iOS) version
 
-A native Pythonista script is available at [`pythonista_app.py`](pythonista_app.py) with nearly the same UI and workflow as the web app:
+A native Pythonista script is available at [`repo2txt_pythonista_ios.py`](repo2txt_pythonista_ios.py) with nearly the same UI and workflow as the web app:
 
 1. Copy this repository into Pythonista on your iOS device.
-2. Open `pythonista_app.py` and run it.
+2. Open `repo2txt_pythonista_ios.py` and run it.
 3. Enter a GitHub URL (and optional token) and tap **Fetch Directory** to load the repo tree.
 4. Toggle files or extensions, then tap **Generate Text** to build the combined prompt.
 5. Use **Download Zip** to export selected files or **Copy/Save** to move the generated text into other apps.
