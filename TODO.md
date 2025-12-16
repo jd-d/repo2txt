@@ -1,0 +1,1 @@
+- [x] Persist blacklist config for local converter (.repo2txtignore support + UI messaging).

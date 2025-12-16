@@ -61,6 +61,17 @@
             </div>
         </div>
 
+        <div class="mb-4">
+            <label for="blacklist" class="block text-sm font-medium text-gray-600">Exclude files/folders (like .gitignore):</label>
+            <p id="blacklistHelp" class="text-xs text-gray-500 mt-1">Gitignore-style patterns; one per line (e.g., <code>node_modules/</code>, <code>*.log</code>, <code>dist/**</code>). Loads <code>.repo2txtignore</code> when present; you can add more below.</p>
+            <textarea id="blacklist" name="blacklist" rows="3" class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 px-2 py-1" placeholder="node_modules/&#10;*.log&#10;package-lock.json"></textarea>
+            <div class="mt-2 flex items-center gap-2 text-sm">
+                <label for="blacklistFile" class="text-gray-600">Load config file (.repo2txtignore):</label>
+                <input type="file" id="blacklistFile" accept=".repo2txtignore,.txt" class="text-sm">
+            </div>
+            <p id="blacklistStatus" class="text-xs text-gray-500 mt-1"></p>
+        </div>
+
         <div>
             <a href="/" class="text-blue-500 hover:text-blue-700 underline">
                 Convert From GitHub Instead

@@ -1,8 +1,21 @@
 import { displayDirectoryStructure, sortContents, getSelectedFiles, formatRepoContents } from './utils.js';
 import { extractZipContents } from './zip-utils.js';
 
-// Add at the top of the file with other imports
+const BLACKLIST_STORAGE_KEY = 'repo2txt:blacklist';
+const CONFIG_FILENAME = '.repo2txtignore';
+
 let pathZipMap = {};
+let currentTree = [];
+let currentGitignoreRules = ['.git/**'];
+
+const blacklistTextarea = document.getElementById('blacklist');
+const blacklistStatus = document.getElementById('blacklistStatus');
+const blacklistFileInput = document.getElementById('blacklistFile');
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadSavedBlacklistIntoUI();
+    lucide.createIcons();
+});
 
 // Event listener for directory selection
 document.getElementById('directoryPicker').addEventListener('change', handleDirectorySelection);
@@ -10,12 +23,30 @@ document.getElementById('directoryPicker').addEventListener('change', handleDire
 // Event listener for zip file selection
 document.getElementById('zipPicker').addEventListener('change', handleZipSelection);
 
+blacklistTextarea.addEventListener('input', () => {
+    saveBlacklist(blacklistTextarea.value);
+    setBlacklistStatus('Saved locally. Applied immediately.');
+    refreshTreeDisplay();
+});
+
+if (blacklistFileInput) {
+    blacklistFileInput.addEventListener('change', handleBlacklistFileUpload);
+}
+
 async function handleDirectorySelection(event) {
     const files = event.target.files;
     if (files.length === 0) return;
 
-    const gitignoreContent = ['.git/**']
+    // Reset any previous zip mapping
+    pathZipMap = {};
+    document.getElementById('zipPicker').value = '';
+
+    const gitignoreContent = ['.git/**'];
     const tree = [];
+    const ignoreLoaders = [];
+    let repo2txtIgnoreText = null;
+    let repo2txtIgnorePath = null;
+
     for (let file of files) {
         const filePath = file.webkitRelativePath.startsWith('/') ? file.webkitRelativePath.slice(1) : file.webkitRelativePath;
         tree.push({
@@ -24,28 +55,24 @@ async function handleDirectorySelection(event) {
             urlType: 'directory',
             url: URL.createObjectURL(file)
         });
-        if (file.webkitRelativePath.endsWith('.gitignore')) {
-            const gitignoreReader = new FileReader();
-            gitignoreReader.onload = function(e) {
-                const content = e.target.result;
-                const lines = content.split('\n');
-                const gitignorePath = file.webkitRelativePath.split('/').slice(0, -1).join('/');
-                lines.forEach(line => {
-                    line = line.trim();
-                    if (line && !line.startsWith('#')) {
-                        if (gitignorePath) {
-                            gitignoreContent.push(`${gitignorePath}/${line}`);
-                        } else {
-                            gitignoreContent.push(line);
-                        }
-                    }
-                });
-                filterAndDisplayTree(tree, gitignoreContent);
-            };
-            gitignoreReader.readAsText(file);
+
+        if (isRepo2txtIgnore(filePath)) {
+            ignoreLoaders.push(loadIgnoreFile(file, filePath, gitignoreContent).then((content) => {
+                repo2txtIgnoreText = content;
+                repo2txtIgnorePath = filePath;
+            }));
+        } else if (filePath.endsWith('.gitignore')) {
+            ignoreLoaders.push(loadIgnoreFile(file, filePath, gitignoreContent));
         }
     }
-    filterAndDisplayTree(tree, gitignoreContent);
+
+    await Promise.all(ignoreLoaders);
+
+    if (repo2txtIgnoreText !== null) {
+        updateBlacklistFromConfig(repo2txtIgnoreText, repo2txtIgnorePath);
+    }
+
+    setTreeAndRules(tree, gitignoreContent);
 }
 
 // Handle zip file selection
@@ -58,11 +85,14 @@ async function handleZipSelection(event) {
         document.getElementById('directoryPicker').value = '';
 
         // Extract zip contents and update the global pathZipMap
-        const { tree, gitignoreContent, pathZipMap: extractedPathZipMap } = await extractZipContents(file);
+        const { tree, gitignoreContent, pathZipMap: extractedPathZipMap, repo2txtConfig } = await extractZipContents(file);
         pathZipMap = extractedPathZipMap;  // Update the global variable
         
-        // Filter and display the tree
-        filterAndDisplayTree(tree, gitignoreContent);
+        if (repo2txtConfig && repo2txtConfig.text) {
+            updateBlacklistFromConfig(repo2txtConfig.text, repo2txtConfig.path);
+        }
+
+        setTreeAndRules(tree, gitignoreContent);
     } catch (error) {
         const outputText = document.getElementById('outputText');
         outputText.value = `Error processing zip file: ${error.message}\n\n` +
@@ -74,8 +104,13 @@ async function handleZipSelection(event) {
 }
 
 function filterAndDisplayTree(tree, gitignoreContent) {
+    const combinedRules = Array.from(new Set([
+        ...gitignoreContent,
+        ...getManualBlacklist()
+    ].filter(Boolean)));
+
     // Filter tree based on gitignore rules
-    const filteredTree = tree.filter(file => !isIgnored(file.path, gitignoreContent));
+    const filteredTree = tree.filter(file => !isIgnored(file.path, combinedRules));
 
     // Sort the tree
     filteredTree.sort(sortContents);
@@ -84,7 +119,104 @@ function filterAndDisplayTree(tree, gitignoreContent) {
     displayDirectoryStructure(filteredTree);
 
     // Show the generate text button
-    document.getElementById('generateTextButton').style.display = 'flex';
+    document.getElementById('generateTextButton').style.display = filteredTree.length ? 'flex' : 'none';
+}
+
+function setTreeAndRules(tree, gitignoreContent) {
+    currentTree = tree;
+    currentGitignoreRules = Array.from(new Set(gitignoreContent.filter(Boolean)));
+    refreshTreeDisplay();
+}
+
+function refreshTreeDisplay() {
+    if (!currentTree.length) return;
+    filterAndDisplayTree(currentTree, currentGitignoreRules);
+}
+
+function getManualBlacklist() {
+    return (blacklistTextarea.value || '')
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#'));
+}
+
+async function handleBlacklistFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    try {
+        const content = await file.text();
+        updateBlacklistFromConfig(content, file.name);
+        refreshTreeDisplay();
+    } finally {
+        event.target.value = '';
+    }
+}
+
+function updateBlacklistFromConfig(configText, sourcePath) {
+    const trimmed = (configText || '').trim();
+    blacklistTextarea.value = trimmed;
+    saveBlacklist(trimmed);
+    const locationText = sourcePath ? `${CONFIG_FILENAME} from ${sourcePath}` : CONFIG_FILENAME;
+    setBlacklistStatus(`Loaded ${locationText}. Add more gitignore-style patterns below if needed.`);
+}
+
+function loadSavedBlacklistIntoUI() {
+    const saved = loadSavedBlacklist();
+    if (saved) {
+        blacklistTextarea.value = saved;
+        setBlacklistStatus('Using saved blacklist from your browser. You can still load a .repo2txtignore file or add more lines.');
+    } else {
+        setBlacklistStatus('Add gitignore-style patterns or load a .repo2txtignore file to reuse them next time.');
+    }
+}
+
+function saveBlacklist(value) {
+    try {
+        localStorage.setItem(BLACKLIST_STORAGE_KEY, value);
+    } catch (error) {
+        console.warn('Unable to save blacklist locally', error);
+    }
+}
+
+function loadSavedBlacklist() {
+    try {
+        return localStorage.getItem(BLACKLIST_STORAGE_KEY) || '';
+    } catch (error) {
+        console.warn('Unable to load saved blacklist', error);
+        return '';
+    }
+}
+
+function setBlacklistStatus(message) {
+    if (blacklistStatus) {
+        blacklistStatus.textContent = message;
+    }
+}
+
+async function loadIgnoreFile(file, filePath, gitignoreContent) {
+    const content = await file.text();
+    const basePath = getParentPath(filePath);
+    gitignoreContent.push(...parseIgnoreFile(content, basePath));
+    return content;
+}
+
+function parseIgnoreFile(content, basePath = '') {
+    const prefix = basePath ? `${basePath}/` : '';
+    return content
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#'))
+        .map(line => prefix ? `${prefix}${line}` : line);
+}
+
+function getParentPath(filePath) {
+    const parts = filePath.split('/');
+    parts.pop();
+    return parts.join('/');
+}
+
+function isRepo2txtIgnore(filePath) {
+    return filePath.endsWith(CONFIG_FILENAME);
 }
 
 // Event listener for generating text file
@@ -131,11 +263,6 @@ async function fetchFileContents(files) {
     }));
     return contents;
 }
-
-// Initialize Lucide icons
-document.addEventListener('DOMContentLoaded', function() {
-    lucide.createIcons();
-});
 
 function isIgnored(filePath, gitignoreRules) {
     return gitignoreRules.some(rule => {
