@@ -53,7 +53,8 @@ async function handleDirectorySelection(event) {
             path: filePath,
             type: 'blob',
             urlType: 'directory',
-            url: URL.createObjectURL(file)
+            url: URL.createObjectURL(file),
+            lastModified: Number.isFinite(file.lastModified) ? file.lastModified : null
         });
 
         if (isRepo2txtIgnore(filePath)) {

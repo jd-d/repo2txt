@@ -9,6 +9,8 @@ function displayDirectoryStructure(tree) {
     const commonExtensions = ['.js', '.py', '.java', '.cpp', '.html', '.css', '.ts', '.jsx', '.tsx'];
     const directoryStructure = {};
     const extensionCheckboxes = {};
+    const timestampCache = new WeakMap();
+    const hasTimestamps = tree.some(item => Number.isFinite(item.lastModified));
 
     // Build directory structure
     tree.forEach(item => {
@@ -25,35 +27,101 @@ function displayDirectoryStructure(tree) {
         });
     });
 
+    function formatTimestamp(timestamp) {
+        if (!Number.isFinite(timestamp)) {
+            return 'Unknown';
+        }
+        const date = new Date(timestamp);
+        if (Number.isNaN(date.getTime())) {
+            return 'Unknown';
+        }
+        const datePart = date.toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: '2-digit'
+        });
+        const timePart = date.toLocaleTimeString(undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+        return `${datePart} ${timePart}`;
+    }
+
+    function getNodeTimestamp(item) {
+        if (!item || typeof item !== 'object') {
+            return null;
+        }
+        if (typeof item.type === 'string') {
+            return Number.isFinite(item.lastModified) ? item.lastModified : null;
+        }
+        if (timestampCache.has(item)) {
+            return timestampCache.get(item);
+        }
+        let latest = null;
+        for (const child of Object.values(item)) {
+            const childTimestamp = getNodeTimestamp(child);
+            if (Number.isFinite(childTimestamp) && (latest === null || childTimestamp > latest)) {
+                latest = childTimestamp;
+            }
+        }
+        timestampCache.set(item, latest);
+        return latest;
+    }
+
+    function appendLastModified(row, item) {
+        if (!hasTimestamps) {
+            return;
+        }
+        const timestamp = getNodeTimestamp(item);
+        const label = formatTimestamp(timestamp);
+        const meta = document.createElement('span');
+        meta.className = 'ml-auto text-xs text-gray-400 whitespace-nowrap';
+        meta.textContent = label;
+        if (Number.isFinite(timestamp)) {
+            meta.title = new Date(timestamp).toLocaleString();
+        }
+        row.appendChild(meta);
+    }
+
     function createTreeNode(name, item, parentUl) {
         const li = document.createElement('li');
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-1 w-full';
+        li.className = 'my-2';
+        li.appendChild(row);
+
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.className = 'mr-2';
         
         if (typeof item === 'object' && (!item.type || typeof item.type !== 'string')) {
             // Directory node
-            createDirectoryNode(li, checkbox, name, item, parentUl);
+            createDirectoryNode(li, row, checkbox, name, item);
         } else {
             // File node
-            createFileNode(li, checkbox, name, item);
+            createFileNode(row, checkbox, name, item);
         }
 
-        li.className = 'my-2';
         parentUl.appendChild(li);
         updateParentCheckbox(checkbox);
         updateExtensionCheckboxes();
     }
 
-    function createDirectoryNode(li, checkbox, name, item, parentUl) {
+    function createDirectoryNode(li, row, checkbox, name, item) {
         checkbox.classList.add('directory-checkbox');
-        li.appendChild(checkbox);
+        row.appendChild(checkbox);
 
         const collapseButton = createCollapseButton();
-        li.appendChild(collapseButton);
+        row.appendChild(collapseButton);
 
-        appendIcon(li, 'folder');
-        li.appendChild(document.createTextNode(name));
+        appendIcon(row, 'folder');
+        const label = document.createElement('span');
+        label.className = 'ml-1 flex-1 min-w-0';
+        label.textContent = name;
+        row.appendChild(label);
+        appendLastModified(row, item);
 
         const ul = document.createElement('ul');
         ul.className = 'ml-6 mt-2';
@@ -67,7 +135,7 @@ function displayDirectoryStructure(tree) {
         addCollapseButtonListener(collapseButton, ul);
     }
 
-    function createFileNode(li, checkbox, name, item) {
+    function createFileNode(row, checkbox, name, item) {
         checkbox.value = JSON.stringify({ url: item.url, path: item.path, urlType: item.urlType });
         
         const extension = name.split('.').pop().toLowerCase();
@@ -82,9 +150,13 @@ function displayDirectoryStructure(tree) {
         }
         extensionCheckboxes[extension].children.push(checkbox);
 
-        li.appendChild(checkbox);
-        appendIcon(li, 'file');
-        li.appendChild(document.createTextNode(name));
+        row.appendChild(checkbox);
+        appendIcon(row, 'file');
+        const label = document.createElement('span');
+        label.className = 'ml-1 flex-1 min-w-0';
+        label.textContent = name;
+        row.appendChild(label);
+        appendLastModified(row, item);
     }
 
     function createCollapseButton() {
@@ -154,8 +226,9 @@ function displayDirectoryStructure(tree) {
         const parentLi = li.parentElement.closest('li');
         if (!parentLi) return;
 
-        const parentCheckbox = parentLi.querySelector(':scope > input[type="checkbox"]');
-        const siblingCheckboxes = parentLi.querySelectorAll(':scope > ul > li > input[type="checkbox"]');
+        const parentCheckbox = parentLi.querySelector(':scope > div > input[type="checkbox"]');
+        if (!parentCheckbox) return;
+        const siblingCheckboxes = parentLi.querySelectorAll(':scope > ul > li > div > input[type="checkbox"]');
         
         const checkedCount = Array.from(siblingCheckboxes).filter(cb => cb.checked).length;
         const indeterminateCount = Array.from(siblingCheckboxes).filter(cb => cb.indeterminate).length;

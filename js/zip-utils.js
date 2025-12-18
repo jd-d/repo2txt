@@ -16,7 +16,8 @@ async function extractZipContents(zipFile) {
                     path: relativePath,
                     type: 'blob',
                     urlType: 'zip', 
-                    url: ''
+                    url: '',
+                    lastModified: zipEntry.date instanceof Date ? zipEntry.date.getTime() : null
                 });
                 pathZipMap[relativePath] = zipEntry;
 
